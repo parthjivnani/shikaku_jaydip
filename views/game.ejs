@@ -132,14 +132,57 @@
     body {
       font-family: sans-serif;
       display: flex;
-      justify-content: center;
+      flex-direction: column;
+      align-items: center;
       margin-top: 40px;
+    }
+
+    .game-controls {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .timer {
+      font-size: 24px;
+      font-weight: bold;
+      display: none;
+    }
+
+    .game-button {
+      padding: 8px 16px;
+      font-size: 16px;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    #startGame {
+      background-color: #4CAF50;
+    }
+
+    #startGame:hover {
+      background-color: #45a049;
+    }
+
+    #resetGame {
+      background-color: #f44336;
+      margin-top: 20px;
+    }
+
+    #resetGame:hover {
+      background-color: #d32f2f;
     }
 
     #grid {
       display: grid;
       gap: 1px;
       background: #000;
+      padding: 2px;
+      border: 2px solid #333;
+      border-radius: 4px;
     }
 
     .cell {
@@ -153,6 +196,7 @@
       font-size: 16px;
       user-select: none;
       position: relative;
+      border: 1px solid #ddd;
     }
 
     .number {
@@ -161,109 +205,247 @@
 
     .selected {
       background-color: #a5d6ff !important;
+      border: 2px solid #2196F3 !important;
+    }
+
+    .locked {
+      background-color: #90EE90 !important;
+      border: 2px solid #4CAF50 !important;
+      pointer-events: none;
+    }
+
+    /* Add border styles for rectangle edges */
+    .cell[data-x="0"] {
+      border-left: 2px solid #333;
+    }
+
+    .cell[data-y="0"] {
+      border-top: 2px solid #333;
+    }
+
+    .cell[data-x="0"][data-y="0"] {
+      border-top-left-radius: 4px;
+    }
+
+    .cell:last-child {
+      border-bottom-right-radius: 4px;
     }
   </style>
 </head>
 <body>
+  <div class="game-controls">
+    <div class="timer">Time: <span id="timer">00:00</span></div>
+    <button id="startGame" class="game-button">Start Game</button>
+  </div>
   <div id="grid"></div>
+  <button id="resetGame" class="game-button" style="display: none;">Reset Game</button>
 
   <script>
-    let rows, cols;
-    let isDragging = false;
-    let startX = null;
-    let startY = null;
+    document.addEventListener('DOMContentLoaded', () => {
+      let rows, cols;
+      let isDragging = false;
+      let startX = null;
+      let startY = null;
+      let timerInterval;
+      let seconds = 0;
 
-    async function loadShikakuPuzzle() {
-      const res = await fetch('/api/rectangles');
-      const data = await res.json();
-      rows = data.rows;
-      cols = data.cols;
-
-      const rectangles = data.rectangles;
-      const grid = document.getElementById('grid');
-      grid.style.gridTemplateColumns = `repeat(${cols}, 40px)`;
-      grid.style.gridTemplateRows = `repeat(${rows}, 40px)`;
-
-      // Create cells with data attributes
-      for (let y = 0; y < rows; y++) {
-        for (let x = 0; x < cols; x++) {
-          const cell = document.createElement('div');
-          cell.classList.add('cell');
-          cell.dataset.x = x;
-          cell.dataset.y = y;
-          grid.appendChild(cell);
-        }
+      function startTimer() {
+        clearInterval(timerInterval);
+        seconds = 0;
+        updateTimer();
+        timerInterval = setInterval(updateTimer, 1000);
+        document.querySelector('.timer').style.display = 'block';
       }
 
-      // Show numbers
-      rectangles.forEach(({ numberCell, area }) => {
-        const selector = `.cell[data-x="${numberCell.x}"][data-y="${numberCell.y}"]`;
-        const cell = document.querySelector(selector);
-        if (cell) {
-          cell.textContent = area;
-          cell.classList.add('number');
+      function updateTimer() {
+        seconds++;
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        document.getElementById('timer').textContent = 
+          `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+      }
+
+      function stopTimer() {
+        clearInterval(timerInterval);
+        document.querySelector('.timer').style.display = 'none';
+      }
+
+      async function loadShikakuPuzzle() {
+        const res = await fetch('/api/rectangles');
+        const data = await res.json();
+        rows = data.rows;
+        cols = data.cols;
+
+        const grid = document.getElementById('grid');
+        grid.innerHTML = ''; // Clear existing grid
+        grid.style.gridTemplateColumns = `repeat(${cols}, 40px)`;
+        grid.style.gridTemplateRows = `repeat(${rows}, 40px)`;
+
+        // Create cells with data attributes
+        for (let y = 0; y < rows; y++) {
+          for (let x = 0; x < cols; x++) {
+            const cell = document.createElement('div');
+            cell.classList.add('cell');
+            cell.dataset.x = x;
+            cell.dataset.y = y;
+            grid.appendChild(cell);
+          }
         }
-      });
 
-      addDragEvents();
-    }
-
-    function addDragEvents() {
-      const grid = document.getElementById('grid');
-
-      grid.addEventListener('mousedown', (e) => {
-        if (!e.target.classList.contains('cell')) return;
-
-        isDragging = true;
-        startX = parseInt(e.target.dataset.x);
-        startY = parseInt(e.target.dataset.y);
-
-        clearSelection();
-      });
-
-      grid.addEventListener('mousemove', (e) => {
-        if (!isDragging || !e.target.classList.contains('cell')) return;
-
-        const endX = parseInt(e.target.dataset.x);
-        const endY = parseInt(e.target.dataset.y);
-
-        highlightSelection(startX, startY, endX, endY);
-      });
-
-      grid.addEventListener('mouseup', () => {
-        isDragging = false;
-      });
-
-      document.addEventListener('mouseup', () => {
-        isDragging = false;
-      });
-    }
-
-    function clearSelection() {
-      document.querySelectorAll('.cell').forEach(cell => {
-        cell.classList.remove('selected');
-      });
-    }
-
-    function highlightSelection(x1, y1, x2, y2) {
-      clearSelection();
-
-      const minX = Math.min(x1, x2);
-      const maxX = Math.max(x1, x2);
-      const minY = Math.min(y1, y2);
-      const maxY = Math.max(y1, y2);
-
-      for (let y = minY; y <= maxY; y++) {
-        for (let x = minX; x <= maxX; x++) {
-          const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+        // Show numbers
+        const rectangles = data.rectangles;
+        rectangles.forEach(({ numberCell, area }) => {
+          const selector = `.cell[data-x="${numberCell.x}"][data-y="${numberCell.y}"]`;
+          const cell = document.querySelector(selector);
           if (cell) {
-            cell.classList.add('selected');
+            cell.textContent = area;
+            cell.classList.add('number');
+          }
+        });
+
+        addDragEvents();
+      }
+
+      function addDragEvents() {
+        const grid = document.getElementById('grid');
+
+        grid.addEventListener('mousedown', (e) => {
+          if (!e.target.classList.contains('cell') || e.target.classList.contains('locked')) return;
+
+          isDragging = true;
+          startX = parseInt(e.target.dataset.x);
+          startY = parseInt(e.target.dataset.y);
+
+          clearSelection();
+        });
+
+        grid.addEventListener('mousemove', (e) => {
+          if (!isDragging || !e.target.classList.contains('cell')) return;
+
+          const endX = parseInt(e.target.dataset.x);
+          const endY = parseInt(e.target.dataset.y);
+
+          highlightSelection(startX, startY, endX, endY);
+        });
+
+        grid.addEventListener('mouseup', async (e) => {
+          if (!isDragging) return;
+          
+          const endX = parseInt(e.target.dataset.x);
+          const endY = parseInt(e.target.dataset.y);
+
+          const minX = Math.min(startX, endX);
+          const maxX = Math.max(startX, endX);
+          const minY = Math.min(startY, endY);
+          const maxY = Math.max(startY, endY);
+
+          try {
+            const response = await fetch('/api/lock-rectangle', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                start: { x: minX, y: minY },
+                end: { x: maxX, y: maxY }
+              })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+              // Lock and highlight the selected area
+              for (let y = minY; y <= maxY; y++) {
+                for (let x = minX; x <= maxX; x++) {
+                  const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                  if (cell) {
+                    cell.classList.add('locked');
+                  }
+                }
+              }
+
+              // Check if game is won
+              if (data.isWon) {
+                stopTimer();
+                setTimeout(() => {
+                  alert('Congratulations! You won the game!');
+                  resetGame();
+                }, 500);
+              }
+            } else {
+              alert(data.error || 'Failed to lock rectangle');
+            }
+          } catch (error) {
+            console.error('Error locking rectangle:', error);
+            alert('Failed to lock rectangle');
+          }
+
+          isDragging = false;
+          clearSelection();
+        });
+
+        document.addEventListener('mouseup', () => {
+          isDragging = false;
+          clearSelection();
+        });
+      }
+
+      function clearSelection() {
+        document.querySelectorAll('.cell').forEach(cell => {
+          cell.classList.remove('selected');
+        });
+      }
+
+      function highlightSelection(x1, y1, x2, y2) {
+        clearSelection();
+
+        const minX = Math.min(x1, x2);
+        const maxX = Math.max(x1, x2);
+        const minY = Math.min(y1, y2);
+        const maxY = Math.max(y1, y2);
+
+        for (let y = minY; y <= maxY; y++) {
+          for (let x = minX; x <= maxX; x++) {
+            const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+            if (cell && !cell.classList.contains('locked')) {
+              cell.classList.add('selected');
+            }
           }
         }
       }
-    }
 
-    loadShikakuPuzzle();
+      function resetGame() {
+        // Clear the grid
+        const grid = document.getElementById('grid');
+        grid.innerHTML = '';
+        grid.style.gridTemplateColumns = 'repeat(0, 40px)';
+        grid.style.gridTemplateRows = 'repeat(0, 40px)';
+
+        // Reset timer
+        stopTimer();
+        document.querySelector('.timer').style.display = 'none';
+
+        // Show start button and hide reset button
+        document.getElementById('startGame').style.display = 'block';
+        document.getElementById('resetGame').style.display = 'none';
+      }
+
+      // Add event listener for the start game button
+      document.getElementById('startGame').addEventListener('click', () => {
+        loadShikakuPuzzle();
+        startTimer();
+        document.getElementById('startGame').style.display = 'none';
+        document.getElementById('resetGame').style.display = 'block';
+      });
+
+      // Add event listener for the reset game button
+      document.getElementById('resetGame').addEventListener('click', resetGame);
+
+      // Initialize with empty grid
+      const grid = document.getElementById('grid');
+      grid.style.gridTemplateColumns = 'repeat(0, 40px)';
+      grid.style.gridTemplateRows = 'repeat(0, 40px)';
+    });
   </script>
 </body>
 </html>

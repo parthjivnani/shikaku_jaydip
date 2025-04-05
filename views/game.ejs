@@ -1,0 +1,269 @@
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shikaku Puzzle Game</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Shikaku Puzzle</h1>
+            <div class="game-controls">
+                <button id="newGame">New Game</button>
+                <div class="timer">Time: <span id="time">00:00</span></div>
+            </div>
+        </header>
+
+        <main>
+            <div class="game-board" id="gameBoard"></div>
+            <div class="game-status">
+                <div id="message"></div>
+            </div>
+        </main>
+
+        <div class="setup-modal" id="setupModal">
+            <div class="modal-content">
+                <h2>New Game</h2>
+                <div class="form-group">
+                    <label for="boardWidth">Width:</label>
+                    <input type="number" id="boardWidth" min="3" max="10" value="6">
+                </div>
+                <div class="form-group">
+                    <label for="boardHeight">Height:</label>
+                    <input type="number" id="boardHeight" min="3" max="10" value="6">
+                </div>
+                <button id="startGame">Start Game</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/game.js"></script>
+</body>
+</html>  -->
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Shikaku Puzzle</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      justify-content: center;
+      margin-top: 40px;
+    }
+
+    #grid {
+      display: grid;
+      gap: 1px;
+      background: #000;
+    }
+
+    .cell {
+      width: 40px;
+      height: 40px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 16px;
+      user-select: none;
+    }
+
+    .number {
+      color: #000;
+    }
+  </style>
+</head>
+<body>
+  <div id="grid"></div>
+
+  <script>
+    async function loadShikakuPuzzle() {
+      const res = await fetch('/api/rectangles');
+      const { rows, cols, rectangles } = await res.json();
+
+      const grid = document.getElementById('grid');
+      grid.style.gridTemplateColumns = `repeat(${cols}, 40px)`;
+      grid.style.gridTemplateRows = `repeat(${rows}, 40px)`;
+
+      const cells = Array.from({ length: rows }, () =>
+        Array.from({ length: cols }, () => '')
+      );
+
+      rectangles.forEach(({ numberCell, area }) => {
+        cells[numberCell.y][numberCell.x] = area;
+      });
+
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const cell = document.createElement('div');
+          cell.classList.add('cell');
+
+          const value = cells[y][x];
+          if (value) {
+            cell.classList.add('number');
+            cell.textContent = value;
+          }
+
+          grid.appendChild(cell);
+        }
+      }
+    }
+
+    loadShikakuPuzzle();
+  </script>
+</body>
+</html> -->
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Shikaku Puzzle</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      justify-content: center;
+      margin-top: 40px;
+    }
+
+    #grid {
+      display: grid;
+      gap: 1px;
+      background: #000;
+    }
+
+    .cell {
+      width: 40px;
+      height: 40px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 16px;
+      user-select: none;
+      position: relative;
+    }
+
+    .number {
+      color: #000;
+    }
+
+    .selected {
+      background-color: #a5d6ff !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="grid"></div>
+
+  <script>
+    let rows, cols;
+    let isDragging = false;
+    let startX = null;
+    let startY = null;
+
+    async function loadShikakuPuzzle() {
+      const res = await fetch('/api/rectangles');
+      const data = await res.json();
+      rows = data.rows;
+      cols = data.cols;
+
+      const rectangles = data.rectangles;
+      const grid = document.getElementById('grid');
+      grid.style.gridTemplateColumns = `repeat(${cols}, 40px)`;
+      grid.style.gridTemplateRows = `repeat(${rows}, 40px)`;
+
+      // Create cells with data attributes
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const cell = document.createElement('div');
+          cell.classList.add('cell');
+          cell.dataset.x = x;
+          cell.dataset.y = y;
+          grid.appendChild(cell);
+        }
+      }
+
+      // Show numbers
+      rectangles.forEach(({ numberCell, area }) => {
+        const selector = `.cell[data-x="${numberCell.x}"][data-y="${numberCell.y}"]`;
+        const cell = document.querySelector(selector);
+        if (cell) {
+          cell.textContent = area;
+          cell.classList.add('number');
+        }
+      });
+
+      addDragEvents();
+    }
+
+    function addDragEvents() {
+      const grid = document.getElementById('grid');
+
+      grid.addEventListener('mousedown', (e) => {
+        if (!e.target.classList.contains('cell')) return;
+
+        isDragging = true;
+        startX = parseInt(e.target.dataset.x);
+        startY = parseInt(e.target.dataset.y);
+
+        clearSelection();
+      });
+
+      grid.addEventListener('mousemove', (e) => {
+        if (!isDragging || !e.target.classList.contains('cell')) return;
+
+        const endX = parseInt(e.target.dataset.x);
+        const endY = parseInt(e.target.dataset.y);
+
+        highlightSelection(startX, startY, endX, endY);
+      });
+
+      grid.addEventListener('mouseup', () => {
+        isDragging = false;
+      });
+
+      document.addEventListener('mouseup', () => {
+        isDragging = false;
+      });
+    }
+
+    function clearSelection() {
+      document.querySelectorAll('.cell').forEach(cell => {
+        cell.classList.remove('selected');
+      });
+    }
+
+    function highlightSelection(x1, y1, x2, y2) {
+      clearSelection();
+
+      const minX = Math.min(x1, x2);
+      const maxX = Math.max(x1, x2);
+      const minY = Math.min(y1, y2);
+      const maxY = Math.max(y1, y2);
+
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+          if (cell) {
+            cell.classList.add('selected');
+          }
+        }
+      }
+    }
+
+    loadShikakuPuzzle();
+  </script>
+</body>
+</html>

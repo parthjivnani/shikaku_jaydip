@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Shikaku Puzzle</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      justify-content: center;
+      margin-top: 40px;
+    }
+    #grid {
+      display: grid;
+      gap: 1px;
+      background: #000;
+    }
+    .cell {
+      width: 40px;
+      height: 40px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div id="grid"></div>
+
+  <script>
+    async function fetchPuzzle() {
+      const response = await fetch('/api/rectangles?rows=5&cols=5');
+      const { rows, cols, rectangles } = await response.json();
+
+      const grid = document.getElementById('grid');
+      grid.style.gridTemplateRows = `repeat(${rows}, 40px)`;
+      grid.style.gridTemplateColumns = `repeat(${cols}, 40px)`;
+
+      const cells = Array.from({ length: rows }, () =>
+        Array.from({ length: cols }, () => null)
+      );
+
+      // Assign each rectangle a color
+      const getColor = (() => {
+        const colors = ['#fdd', '#dfd', '#ddf', '#ffd', '#dff', '#fdf'];
+        let index = 0;
+        return () => colors[index++ % colors.length];
+      })();
+
+      rectangles.forEach(({ x, y, width, height, numberX, numberY }) => {
+        const color = getColor();
+        for (let dy = 0; dy < height; dy++) {
+          for (let dx = 0; dx < width; dx++) {
+            const cx = x + dx;
+            const cy = y + dy;
+            cells[cy][cx] = {
+              number: (cx === numberX && cy === numberY) ? (width * height) : '',
+              color
+            };
+          }
+        }
+      });
+
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const cell = document.createElement('div');
+          cell.classList.add('cell');
+          const data = cells[y][x];
+          if (data) {
+            cell.style.background = data.color;
+            cell.textContent = data.number;
+          }
+          grid.appendChild(cell);
+        }
+      }
+    }
+
+    fetchPuzzle();
+  </script>
+</body>
+</html>

@@ -5,11 +5,56 @@ const socketIo = require('socket.io');
 const winston = require('winston');
 const cors = require('cors');
 const path = require('path');
+const mongoose = require('mongoose');
 
 // Initialize Express app
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
+
+// MongoDB connection
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/shikaku', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+})
+.then(() => console.log('Connected to MongoDB'))
+.catch(err => console.error('MongoDB connection error:', err));
+
+// Game Schema
+const gameSchema = new mongoose.Schema({
+    gameId: { type: String, required: true, unique: true },
+    rows: { type: Number, required: true },
+    cols: { type: Number, required: true },
+    rectangles: [{
+        x: Number,
+        y: Number,
+        width: Number,
+        height: Number,
+        area: Number,
+        numberCell: {
+            x: Number,
+            y: Number
+        },
+        locked: Boolean
+    }],
+    lockedRectangles: [{
+        x: Number,
+        y: Number,
+        width: Number,
+        height: Number,
+        area: Number,
+        numberCell: {
+            x: Number,
+            y: Number
+        }
+    }],
+    isComplete: { type: Boolean, default: false },
+    isWon: { type: Boolean, default: false },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+});
+
+const Game = mongoose.model('Game', gameSchema);
 
 // Middleware
 app.use(cors());
@@ -42,12 +87,6 @@ if (process.env.NODE_ENV !== 'production') {
     }));
 }
 
-// In-memory game state storage
-const gameStates = new Map();
-
-// Add this after the gameStates Map
-let currentGame = null;
-
 // Game logic
 class ShikakuGame {
     constructor(width, height) {
@@ -57,99 +96,10 @@ class ShikakuGame {
         this.startTime = new Date();
         this.endTime = null;
         this.isComplete = false;
+        this.gameId = Math.random().toString(36).substr(2, 9); // Generate unique game ID
     }
 
-    generateRectangles() {
-        const rectangles = [];
-        let id = 0;
-        let remainingCells = new Set();
-        
-        // Initialize available cells
-        for (let y = 0; y < this.height; y++) {
-            for (let x = 0; x < this.width; x++) {
-                remainingCells.add(`${x},${y}`);
-            }
-        }
-
-        while (remainingCells.size > 0) {
-            const [x, y] = this.getRandomCell(remainingCells);
-            const maxWidth = Math.min(3, this.width - x);
-            const maxHeight = Math.min(3, this.height - y);
-            
-            // Generate random dimensions
-            const width = Math.floor(Math.random() * maxWidth) + 1;
-            const height = Math.floor(Math.random() * maxHeight) + 1;
-            
-            // Create rectangle
-            const rect = {
-                id: `rect-${id++}`,
-                x,
-                y,
-                width,
-                height,
-                area: width * height,
-                locked: false
-            };
-            
-            // Remove covered cells from available cells
-            for (let dy = 0; dy < height; dy++) {
-                for (let dx = 0; dx < width; dx++) {
-                    remainingCells.delete(`${x + dx},${y + dy}`);
-                }
-            }
-            
-            rectangles.push(rect);
-        }
-        
-        this.rectangles = rectangles;
-        return rectangles;
-    }
-
-    getRandomCell(cells) {
-        const index = Math.floor(Math.random() * cells.size);
-        const cell = Array.from(cells)[index];
-        cells.delete(cell);
-        return cell.split(',').map(Number);
-    }
-
-    selectRectangle(x, y) {
-        return this.rectangles.find(rect => {
-            return x >= rect.x && x < rect.x + rect.width &&
-                   y >= rect.y && y < rect.y + rect.height;
-        });
-    }
-
-    snapRectangle(rectId, x, y) {
-        const rect = this.rectangles.find(r => r.id === rectId);
-        if (rect && !rect.locked) {
-            rect.x = x;
-            rect.y = y;
-            rect.locked = true;
-            return true;
-        }
-        return false;
-    }
-
-    checkWin() {
-        // Check if all rectangles are locked and the board is fully covered
-        const allLocked = this.rectangles.every(rect => rect.locked);
-        if (!allLocked) return false;
-
-        // Create a grid to check coverage
-        const grid = Array(this.height).fill().map(() => Array(this.width).fill(false));
-        
-        for (const rect of this.rectangles) {
-            for (let y = rect.y; y < rect.y + rect.height; y++) {
-                for (let x = rect.x; x < rect.x + rect.width; x++) {
-                    if (grid[y][x]) return false; // Overlapping rectangles
-                    grid[y][x] = true;
-                }
-            }
-        }
-
-        // Check if all cells are covered
-        return grid.every(row => row.every(cell => cell));
-    }
+    // ... rest of the ShikakuGame class methods ...
 }
 
 // API Routes
@@ -160,14 +110,12 @@ app.post('/api/board', (req, res) => {
     }
 
     const game = new ShikakuGame(width, height);
-    const boardId = Math.random().toString(36).substr(2, 9);
-    gameStates.set(boardId, game);
     
-    logger.info(`Created new board: ${boardId}`);
-    res.json({ boardId, dimensions: { width, height } });
+    logger.info(`Created new board with ID: ${game.gameId}`);
+    res.json({ gameId: game.gameId, dimensions: { width, height } });
 });
 
-app.get('/api/rectangles', (req, res) => {
+app.get('/api/rectangles', async (req, res) => {
     const rows = parseInt(req.query.rows) || 5;
     const cols = parseInt(req.query.cols) || 5;
 
@@ -242,143 +190,184 @@ app.get('/api/rectangles', (req, res) => {
         attempts = 0;
     }
 
-    // Store the current game state
-    currentGame = {
-        rows,
-        cols,
-        rectangles,
-        grid
-    };
+    // Generate new game ID
+    const gameId = Math.random().toString(36).substr(2, 9);
 
-    res.json({
-        rows,
-        cols,
-        rectangles
-    });
+    try {
+        // Delete any existing game with this ID (just in case)
+        await Game.deleteOne({ gameId });
+
+        // Create new game in MongoDB with empty locked rectangles array
+        const newGame = new Game({
+            gameId,
+            rows,
+            cols,
+            rectangles,
+            lockedRectangles: [],
+            isComplete: false,
+            isWon: false,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        });
+
+        await newGame.save();
+        
+        res.json({
+            gameId,
+            rows,
+            cols,
+            rectangles
+        });
+    } catch (error) {
+        console.error('Error saving game:', error);
+        res.status(500).json({ error: 'Failed to create new game' });
+    }
 });
 
-app.post('/api/lock-rectangle', (req, res) => {
-    if (!currentGame) {
-        return res.status(400).json({ error: 'No active game' });
+app.post('/api/lock-rectangle', async (req, res) => {
+    const { gameId, start, end } = req.body;
+    
+    if (!gameId) {
+        return res.status(400).json({ error: 'Game ID is required' });
     }
 
-    const { start, end } = req.body;
-    
-    if (!start || !end || 
-        typeof start.x !== 'number' || typeof start.y !== 'number' ||
-        typeof end.x !== 'number' || typeof end.y !== 'number') {
-        return res.status(400).json({ error: 'Invalid rectangle coordinates' });
-    }
-
-    // Calculate rectangle dimensions
-    const minX = Math.min(start.x, end.x);
-    const maxX = Math.max(start.x, end.x);
-    const minY = Math.min(start.y, end.y);
-    const maxY = Math.max(start.y, end.y);
-    
-    const width = maxX - minX + 1;
-    const height = maxY - minY + 1;
-    const area = width * height;
-
-    // Check if the selected area contains exactly one number cell
-    let numberCell = null;
-    let numberCellArea = null;
-
-    // Find the number cell in the selected area
-    for (const rect of currentGame.rectangles) {
-        if (rect.numberCell.x >= minX && rect.numberCell.x <= maxX &&
-            rect.numberCell.y >= minY && rect.numberCell.y <= maxY) {
-            if (numberCell) {
-                // More than one number cell in the area
-                return res.status(400).json({ error: 'Area contains multiple number cells' });
-            }
-            numberCell = rect.numberCell;
-            numberCellArea = rect.area;
+    try {
+        // Find the game in MongoDB
+        const game = await Game.findOne({ gameId });
+        if (!game) {
+            return res.status(400).json({ error: 'Invalid game ID or no active game' });
         }
-    }
 
-    if (!numberCell) {
-        return res.status(400).json({ error: 'Area must contain exactly one number cell' });
-    }
+        if (!start || !end || 
+            typeof start.x !== 'number' || typeof start.y !== 'number' ||
+            typeof end.x !== 'number' || typeof end.y !== 'number') {
+            return res.status(400).json({ error: 'Invalid rectangle coordinates' });
+        }
 
-    // Check if the area matches the number cell's area
-    if (area !== numberCellArea) {
-        return res.status(400).json({ error: 'Selected area size does not match the number' });
-    }
+        // Calculate rectangle dimensions
+        const minX = Math.min(start.x, end.x);
+        const maxX = Math.max(start.x, end.x);
+        const minY = Math.min(start.y, end.y);
+        const maxY = Math.max(start.y, end.y);
+        
+        const width = maxX - minX + 1;
+        const height = maxY - minY + 1;
+        const area = width * height;
 
-    // Check if the area overlaps with any locked rectangles
-    for (const rect of currentGame.rectangles) {
-        if (rect.locked) {
-            const rectMinX = rect.x;
-            const rectMaxX = rect.x + rect.width - 1;
-            const rectMinY = rect.y;
-            const rectMaxY = rect.y + rect.height - 1;
+        // Check if the selected area contains exactly one number cell
+        let numberCell = null;
+        let numberCellArea = null;
+
+        // Find the number cell in the selected area
+        for (const rect of game.rectangles) {
+            if (rect.numberCell.x >= minX && rect.numberCell.x <= maxX &&
+                rect.numberCell.y >= minY && rect.numberCell.y <= maxY) {
+                if (numberCell) {
+                    return res.status(400).json({ error: 'Area contains multiple number cells' });
+                }
+                numberCell = rect.numberCell;
+                numberCellArea = rect.area;
+            }
+        }
+
+        if (!numberCell) {
+            return res.status(400).json({ error: 'Area must contain exactly one number cell' });
+        }
+
+        // Check if the area matches the number cell's area
+        if (area !== numberCellArea) {
+            return res.status(400).json({ error: 'Selected area size does not match the number' });
+        }
+
+        // Check for overlapping with existing locked rectangles
+        for (const lockedRect of game.lockedRectangles) {
+            const rectMinX = lockedRect.x;
+            const rectMaxX = lockedRect.x + lockedRect.width - 1;
+            const rectMinY = lockedRect.y;
+            const rectMaxY = lockedRect.y + lockedRect.height - 1;
 
             if (!(maxX < rectMinX || minX > rectMaxX || maxY < rectMinY || minY > rectMaxY)) {
-                return res.status(400).json({ error: 'Area overlaps with locked rectangle' });
-            }
-        }
-    }
-
-    // Lock the rectangle
-    for (const rect of currentGame.rectangles) {
-        if (rect.numberCell.x === numberCell.x && rect.numberCell.y === numberCell.y) {
-            rect.locked = true;
-            rect.x = minX;
-            rect.y = minY;
-            rect.width = width;
-            rect.height = height;
-            break;
-        }
-    }
-
-    // Check if the game is complete
-    const isComplete = currentGame.rectangles.every(rect => rect.locked);
-    let isWon = false;
-
-    if (isComplete) {
-        // Create a grid to check coverage
-        const grid = Array(currentGame.rows).fill().map(() => Array(currentGame.cols).fill(false));
-        
-        // Mark all cells covered by rectangles
-        for (const rect of currentGame.rectangles) {
-            for (let y = rect.y; y < rect.y + rect.height; y++) {
-                for (let x = rect.x; x < rect.x + rect.width; x++) {
-                    if (grid[y][x]) {
-                        // Overlapping rectangles
-                        isWon = false;
-                        break;
+                return res.status(400).json({ 
+                    error: 'Area overlaps with locked rectangle',
+                    overlappingRect: {
+                        x: lockedRect.x,
+                        y: lockedRect.y,
+                        width: lockedRect.width,
+                        height: lockedRect.height
                     }
-                    grid[y][x] = true;
-                }
+                });
             }
         }
 
-        // Check if all cells are covered
-        isWon = grid.every(row => row.every(cell => cell));
-    }
-
-    res.json({
-        success: true,
-        isComplete,
-        isWon,
-        rectangle: {
+        // Create the new locked rectangle
+        const newLockedRect = {
             x: minX,
             y: minY,
             width,
             height,
-            area
+            area,
+            numberCell
+        };
+
+        // Add to locked rectangles and update the game
+        game.lockedRectangles.push(newLockedRect);
+        game.isComplete = game.lockedRectangles.length === game.rectangles.length;
+        game.updatedAt = new Date();
+        
+        if (game.isComplete) {
+            // Create a grid to check coverage
+            const grid = Array(game.rows).fill().map(() => Array(game.cols).fill(false));
+            
+            // Mark all cells covered by rectangles
+            for (const rect of game.lockedRectangles) {
+                for (let y = rect.y; y < rect.y + rect.height; y++) {
+                    for (let x = rect.x; x < rect.x + rect.width; x++) {
+                        if (grid[y][x]) {
+                            // Overlapping rectangles
+                            game.isWon = false;
+                            break;
+                        }
+                        grid[y][x] = true;
+                    }
+                }
+            }
+
+            // Check if all cells are covered
+            game.isWon = grid.every(row => row.every(cell => cell));
         }
-    });
+
+        // Save the updated game state
+        await game.save();
+
+        res.json({
+            success: true,
+            isComplete: game.isComplete,
+            isWon: game.isWon,
+            rectangle: newLockedRect
+        });
+    } catch (error) {
+        console.error('Error updating game:', error);
+        res.status(500).json({ error: 'Failed to update game state' });
+    }
+});
+
+app.post('/api/unlock-rectangle', (req, res) => {
+    const { gameId, x, y } = req.body;
+    
+    if (!gameId) {
+        return res.status(400).json({ error: 'Game ID is required' });
+    }
+
+    // ... rest of the unlock-rectangle endpoint logic ...
 });
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
     logger.info('New client connected');
 
-    socket.on('select-rectangle', (data) => {
+    socket.on('select-rectangle', async (data) => {
         const { boardId, x, y } = data;
-        const game = gameStates.get(boardId);
+        const game = await Game.findOne({ gameId: boardId });
         
         if (!game) {
             socket.emit('error', 'Board not found');
@@ -389,9 +378,9 @@ io.on('connection', (socket) => {
         socket.emit('rectangle-selected', rect);
     });
 
-    socket.on('snap-rectangle', (data) => {
+    socket.on('snap-rectangle', async (data) => {
         const { boardId, rectId, x, y } = data;
-        const game = gameStates.get(boardId);
+        const game = await Game.findOne({ gameId: boardId });
         
         if (!game) {
             socket.emit('error', 'Board not found');

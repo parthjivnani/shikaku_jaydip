@@ -1,128 +1,3 @@
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shikaku Puzzle Game</title>
-    <link rel="stylesheet" href="/css/style.css">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Shikaku Puzzle</h1>
-            <div class="game-controls">
-                <button id="newGame">New Game</button>
-                <div class="timer">Time: <span id="time">00:00</span></div>
-            </div>
-        </header>
-
-        <main>
-            <div class="game-board" id="gameBoard"></div>
-            <div class="game-status">
-                <div id="message"></div>
-            </div>
-        </main>
-
-        <div class="setup-modal" id="setupModal">
-            <div class="modal-content">
-                <h2>New Game</h2>
-                <div class="form-group">
-                    <label for="boardWidth">Width:</label>
-                    <input type="number" id="boardWidth" min="3" max="10" value="6">
-                </div>
-                <div class="form-group">
-                    <label for="boardHeight">Height:</label>
-                    <input type="number" id="boardHeight" min="3" max="10" value="6">
-                </div>
-                <button id="startGame">Start Game</button>
-            </div>
-        </div>
-    </div>
-
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="/js/game.js"></script>
-</body>
-</html>  -->
-
-
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Shikaku Puzzle</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      display: flex;
-      justify-content: center;
-      margin-top: 40px;
-    }
-
-    #grid {
-      display: grid;
-      gap: 1px;
-      background: #000;
-    }
-
-    .cell {
-      width: 40px;
-      height: 40px;
-      background: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-      font-size: 16px;
-      user-select: none;
-    }
-
-    .number {
-      color: #000;
-    }
-  </style>
-</head>
-<body>
-  <div id="grid"></div>
-
-  <script>
-    async function loadShikakuPuzzle() {
-      const res = await fetch('/api/rectangles');
-      const { rows, cols, rectangles } = await res.json();
-
-      const grid = document.getElementById('grid');
-      grid.style.gridTemplateColumns = `repeat(${cols}, 40px)`;
-      grid.style.gridTemplateRows = `repeat(${rows}, 40px)`;
-
-      const cells = Array.from({ length: rows }, () =>
-        Array.from({ length: cols }, () => '')
-      );
-
-      rectangles.forEach(({ numberCell, area }) => {
-        cells[numberCell.y][numberCell.x] = area;
-      });
-
-      for (let y = 0; y < rows; y++) {
-        for (let x = 0; x < cols; x++) {
-          const cell = document.createElement('div');
-          cell.classList.add('cell');
-
-          const value = cells[y][x];
-          if (value) {
-            cell.classList.add('number');
-            cell.textContent = value;
-          }
-
-          grid.appendChild(cell);
-        }
-      }
-    }
-
-    loadShikakuPuzzle();
-  </script>
-</body>
-</html> -->
-
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -240,212 +115,231 @@
   <div id="grid"></div>
   <button id="resetGame" class="game-button" style="display: none;">Reset Game</button>
 
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      let rows, cols;
-      let isDragging = false;
-      let startX = null;
-      let startY = null;
-      let timerInterval;
-      let seconds = 0;
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            let rows, cols;
+            let isDragging = false;
+            let startX = null;
+            let startY = null;
+            let timerInterval;
+            let currentGameId = null;
+            let seconds = 0;
 
-      function startTimer() {
-        clearInterval(timerInterval);
-        seconds = 0;
-        updateTimer();
-        timerInterval = setInterval(updateTimer, 1000);
-        document.querySelector('.timer').style.display = 'block';
-      }
+            function startTimer() {
+                clearInterval(timerInterval);
+                seconds = 0;
+                updateTimer();
+                timerInterval = setInterval(updateTimer, 1000);
+                document.querySelector('.timer').style.display = 'block';
+            }
 
-      function updateTimer() {
-        seconds++;
-        const minutes = Math.floor(seconds / 60);
-        const remainingSeconds = seconds % 60;
-        document.getElementById('timer').textContent = 
-          `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-      }
+            function updateTimer() {
+                seconds++;
+                const minutes = Math.floor(seconds / 60);
+                const remainingSeconds = seconds % 60;
+                document.getElementById('timer').textContent = 
+                    `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+            }
 
-      function stopTimer() {
-        clearInterval(timerInterval);
-        document.querySelector('.timer').style.display = 'none';
-      }
+            function stopTimer() {
+                clearInterval(timerInterval);
+                document.querySelector('.timer').style.display = 'none';
+            }
 
-      async function loadShikakuPuzzle() {
-        const res = await fetch('/api/rectangles');
-        const data = await res.json();
-        rows = data.rows;
-        cols = data.cols;
+            async function loadShikakuPuzzle() {
+                const res = await fetch('/api/rectangles');
+                const data = await res.json();
+                rows = data.rows;
+                cols = data.cols;
+                currentGameId = data.gameId;
 
-        const grid = document.getElementById('grid');
-        grid.innerHTML = ''; // Clear existing grid
-        grid.style.gridTemplateColumns = `repeat(${cols}, 40px)`;
-        grid.style.gridTemplateRows = `repeat(${rows}, 40px)`;
+                const grid = document.getElementById('grid');
+                grid.innerHTML = ''; // Clear existing grid
+                grid.style.gridTemplateColumns = `repeat(${cols}, 40px)`;
+                grid.style.gridTemplateRows = `repeat(${rows}, 40px)`;
 
-        // Create cells with data attributes
-        for (let y = 0; y < rows; y++) {
-          for (let x = 0; x < cols; x++) {
-            const cell = document.createElement('div');
-            cell.classList.add('cell');
-            cell.dataset.x = x;
-            cell.dataset.y = y;
-            grid.appendChild(cell);
-          }
-        }
+                // Create cells with data attributes
+                for (let y = 0; y < rows; y++) {
+                    for (let x = 0; x < cols; x++) {
+                        const cell = document.createElement('div');
+                        cell.classList.add('cell');
+                        cell.dataset.x = x;
+                        cell.dataset.y = y;
+                        grid.appendChild(cell);
+                    }
+                }
 
-        // Show numbers
-        const rectangles = data.rectangles;
-        rectangles.forEach(({ numberCell, area }) => {
-          const selector = `.cell[data-x="${numberCell.x}"][data-y="${numberCell.y}"]`;
-          const cell = document.querySelector(selector);
-          if (cell) {
-            cell.textContent = area;
-            cell.classList.add('number');
-          }
-        });
+                // Show numbers
+                const rectangles = data.rectangles;
+                rectangles.forEach(({ numberCell, area }) => {
+                    const selector = `.cell[data-x="${numberCell.x}"][data-y="${numberCell.y}"]`;
+                    const cell = document.querySelector(selector);
+                    if (cell) {
+                        cell.textContent = area;
+                        cell.classList.add('number');
+                    }
+                });
 
-        addDragEvents();
-      }
+                addDragEvents();
+            }
 
-      function addDragEvents() {
-        const grid = document.getElementById('grid');
+            function addDragEvents() {
+                const grid = document.getElementById('grid');
 
-        grid.addEventListener('mousedown', (e) => {
-          if (!e.target.classList.contains('cell') || e.target.classList.contains('locked')) return;
+                grid.addEventListener('mousedown', (e) => {
+                    if (!e.target.classList.contains('cell') || e.target.classList.contains('locked')) return;
 
-          isDragging = true;
-          startX = parseInt(e.target.dataset.x);
-          startY = parseInt(e.target.dataset.y);
+                    isDragging = true;
+                    startX = parseInt(e.target.dataset.x);
+                    startY = parseInt(e.target.dataset.y);
 
-          clearSelection();
-        });
+                    clearSelection();
+                });
 
-        grid.addEventListener('mousemove', (e) => {
-          if (!isDragging || !e.target.classList.contains('cell')) return;
+                grid.addEventListener('mousemove', (e) => {
+                    if (!isDragging || !e.target.classList.contains('cell')) return;
 
-          const endX = parseInt(e.target.dataset.x);
-          const endY = parseInt(e.target.dataset.y);
+                    const endX = parseInt(e.target.dataset.x);
+                    const endY = parseInt(e.target.dataset.y);
 
-          highlightSelection(startX, startY, endX, endY);
-        });
+                    highlightSelection(startX, startY, endX, endY);
+                });
 
-        grid.addEventListener('mouseup', async (e) => {
-          if (!isDragging) return;
-          
-          const endX = parseInt(e.target.dataset.x);
-          const endY = parseInt(e.target.dataset.y);
+                grid.addEventListener('mouseup', async (e) => {
+                    if (!isDragging) return;
+                    
+                    const endX = parseInt(e.target.dataset.x);
+                    const endY = parseInt(e.target.dataset.y);
 
-          const minX = Math.min(startX, endX);
-          const maxX = Math.max(startX, endX);
-          const minY = Math.min(startY, endY);
-          const maxY = Math.max(startY, endY);
+                    const minX = Math.min(startX, endX);
+                    const maxX = Math.max(startX, endX);
+                    const minY = Math.min(startY, endY);
+                    const maxY = Math.max(startY, endY);
 
-          try {
-            const response = await fetch('/api/lock-rectangle', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                start: { x: minX, y: minY },
-                end: { x: maxX, y: maxY }
-              })
+                    try {
+                        const response = await fetch('/api/lock-rectangle', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                gameId: currentGameId,
+                                start: { x: minX, y: minY },
+                                end: { x: maxX, y: maxY }
+                            })
+                        });
+
+                        const data = await response.json();
+
+                        if (response.ok) {
+                            // Lock and highlight the selected area
+                            for (let y = minY; y <= maxY; y++) {
+                                for (let x = minX; x <= maxX; x++) {
+                                    const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                                    if (cell) {
+                                        cell.classList.add('locked');
+                                    }
+                                }
+                            }
+
+                            // Check if game is won
+                            if (data.isComplete) {
+                                stopTimer();
+                                if (data.isWon) {
+                                    setTimeout(() => {
+                                        alert('Congratulations! You won the game!');
+                                        resetGame();
+                                    }, 500);
+                                } else {
+                                    setTimeout(() => {
+                                        alert('Game completed but there are overlapping rectangles!');
+                                        resetGame();
+                                    }, 500);
+                                }
+                            }
+                        } else {
+                            alert(data.error || 'Failed to lock rectangle');
+                        }
+                    } catch (error) {
+                        console.error('Error locking rectangle:', error);
+                        alert('Failed to lock rectangle');
+                    }
+
+                    isDragging = false;
+                    clearSelection();
+                });
+
+                document.addEventListener('mouseup', () => {
+                    isDragging = false;
+                    clearSelection();
+                });
+            }
+
+            function clearSelection() {
+                document.querySelectorAll('.cell').forEach(cell => {
+                    cell.classList.remove('selected');
+                });
+            }
+
+            function highlightSelection(x1, y1, x2, y2) {
+                clearSelection();
+
+                const minX = Math.min(x1, x2);
+                const maxX = Math.max(x1, x2);
+                const minY = Math.min(y1, y2);
+                const maxY = Math.max(y1, y2);
+
+                for (let y = minY; y <= maxY; y++) {
+                    for (let x = minX; x <= maxX; x++) {
+                        const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                        if (cell && !cell.classList.contains('locked')) {
+                            cell.classList.add('selected');
+                        }
+                    }
+                }
+            }
+
+            function resetGame() {
+                // Clear the grid
+                const grid = document.getElementById('grid');
+                grid.innerHTML = '';
+                grid.style.gridTemplateColumns = 'repeat(0, 40px)';
+                grid.style.gridTemplateRows = 'repeat(0, 40px)';
+
+                // Reset timer
+                stopTimer();
+                document.querySelector('.timer').style.display = 'none';
+
+                // Show start button and hide reset button
+                document.getElementById('startGame').style.display = 'block';
+                document.getElementById('resetGame').style.display = 'none';
+
+                // Reset game ID
+                currentGameId = null;
+
+                // Load a new game with new game ID
+                loadShikakuPuzzle();
+                startTimer();
+                document.getElementById('startGame').style.display = 'none';
+                document.getElementById('resetGame').style.display = 'block';
+            }
+
+            // Add event listener for the start game button
+            document.getElementById('startGame').addEventListener('click', () => {
+                loadShikakuPuzzle();
+                startTimer();
+                document.getElementById('startGame').style.display = 'none';
+                document.getElementById('resetGame').style.display = 'block';
             });
 
-            const data = await response.json();
+            // Add event listener for the reset game button
+            document.getElementById('resetGame').addEventListener('click', resetGame);
 
-            if (response.ok) {
-              // Lock and highlight the selected area
-              for (let y = minY; y <= maxY; y++) {
-                for (let x = minX; x <= maxX; x++) {
-                  const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
-                  if (cell) {
-                    cell.classList.add('locked');
-                  }
-                }
-              }
-
-              // Check if game is won
-              if (data.isWon) {
-                stopTimer();
-                setTimeout(() => {
-                  alert('Congratulations! You won the game!');
-                  resetGame();
-                }, 500);
-              }
-            } else {
-              alert(data.error || 'Failed to lock rectangle');
-            }
-          } catch (error) {
-            console.error('Error locking rectangle:', error);
-            alert('Failed to lock rectangle');
-          }
-
-          isDragging = false;
-          clearSelection();
+            // Initialize with empty grid
+            const grid = document.getElementById('grid');
+            grid.style.gridTemplateColumns = 'repeat(0, 40px)';
+            grid.style.gridTemplateRows = 'repeat(0, 40px)';
         });
-
-        document.addEventListener('mouseup', () => {
-          isDragging = false;
-          clearSelection();
-        });
-      }
-
-      function clearSelection() {
-        document.querySelectorAll('.cell').forEach(cell => {
-          cell.classList.remove('selected');
-        });
-      }
-
-      function highlightSelection(x1, y1, x2, y2) {
-        clearSelection();
-
-        const minX = Math.min(x1, x2);
-        const maxX = Math.max(x1, x2);
-        const minY = Math.min(y1, y2);
-        const maxY = Math.max(y1, y2);
-
-        for (let y = minY; y <= maxY; y++) {
-          for (let x = minX; x <= maxX; x++) {
-            const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
-            if (cell && !cell.classList.contains('locked')) {
-              cell.classList.add('selected');
-            }
-          }
-        }
-      }
-
-      function resetGame() {
-        // Clear the grid
-        const grid = document.getElementById('grid');
-        grid.innerHTML = '';
-        grid.style.gridTemplateColumns = 'repeat(0, 40px)';
-        grid.style.gridTemplateRows = 'repeat(0, 40px)';
-
-        // Reset timer
-        stopTimer();
-        document.querySelector('.timer').style.display = 'none';
-
-        // Show start button and hide reset button
-        document.getElementById('startGame').style.display = 'block';
-        document.getElementById('resetGame').style.display = 'none';
-      }
-
-      // Add event listener for the start game button
-      document.getElementById('startGame').addEventListener('click', () => {
-        loadShikakuPuzzle();
-        startTimer();
-        document.getElementById('startGame').style.display = 'none';
-        document.getElementById('resetGame').style.display = 'block';
-      });
-
-      // Add event listener for the reset game button
-      document.getElementById('resetGame').addEventListener('click', resetGame);
-
-      // Initialize with empty grid
-      const grid = document.getElementById('grid');
-      grid.style.gridTemplateColumns = 'repeat(0, 40px)';
-      grid.style.gridTemplateRows = 'repeat(0, 40px)';
-    });
-  </script>
+    </script>
 </body>
 </html>

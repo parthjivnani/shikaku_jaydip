@@ -45,6 +45,9 @@ if (process.env.NODE_ENV !== 'production') {
 // In-memory game state storage
 const gameStates = new Map();
 
+// Add this after the gameStates Map
+let currentGame = null;
+
 // Game logic
 class ShikakuGame {
     constructor(width, height) {
@@ -165,270 +168,184 @@ app.post('/api/board', (req, res) => {
 });
 
 app.get('/api/rectangles', (req, res) => {
-    const { boardId } = req.body;
-
     const rows = parseInt(req.query.rows) || 5;
-  const cols = parseInt(req.query.cols) || 5;
+    const cols = parseInt(req.query.cols) || 5;
 
-  const grid = Array.from({ length: rows }, () => Array(cols).fill(false));
-  const rectangles = [];
+    const grid = Array.from({ length: rows }, () => Array(cols).fill(false));
+    const rectangles = [];
 
-  const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+    const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
-  let attempts = 0;
+    let attempts = 0;
 
-  while (attempts < 1000) {
-    const x = getRandomInt(0, cols - 1);
-    const y = getRandomInt(0, rows - 1);
+    while (attempts < 1000) {
+        const x = getRandomInt(0, cols - 1);
+        const y = getRandomInt(0, rows - 1);
 
-    if (grid[y][x]) {
-      attempts++;
-      continue;
-    }
+        if (grid[y][x]) {
+            attempts++;
+            continue;
+        }
 
-    const maxWidth = cols - x;
-    const maxHeight = rows - y;
-    const possibleRects = [];
+        const maxWidth = cols - x;
+        const maxHeight = rows - y;
+        const possibleRects = [];
 
-    for (let w = 1; w <= maxWidth; w++) {
-      for (let h = 1; h <= maxHeight; h++) {
-        let valid = true;
-        for (let dy = 0; dy < h; dy++) {
-          for (let dx = 0; dx < w; dx++) {
-            if (grid[y + dy][x + dx]) {
-              valid = false;
-              break;
+        for (let w = 1; w <= maxWidth; w++) {
+            for (let h = 1; h <= maxHeight; h++) {
+                let valid = true;
+                for (let dy = 0; dy < h; dy++) {
+                    for (let dx = 0; dx < w; dx++) {
+                        if (grid[y + dy][x + dx]) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                    if (!valid) break;
+                }
+
+                if (valid) {
+                    possibleRects.push({ w, h });
+                }
             }
-          }
-          if (!valid) break;
         }
 
-        if (valid) {
-          possibleRects.push({ w, h });
+        if (possibleRects.length === 0) {
+            attempts++;
+            continue;
         }
-      }
+
+        const { w, h } = possibleRects[Math.floor(Math.random() * possibleRects.length)];
+
+        for (let dy = 0; dy < h; dy++) {
+            for (let dx = 0; dx < w; dx++) {
+                grid[y + dy][x + dx] = true;
+            }
+        }
+
+        const numberX = x + getRandomInt(0, w - 1);
+        const numberY = y + getRandomInt(0, h - 1);
+
+        rectangles.push({
+            x,
+            y,
+            width: w,
+            height: h,
+            area: w * h,
+            numberCell: {
+                x: numberX,
+                y: numberY
+            },
+            locked: false
+        });
+
+        attempts = 0;
     }
 
-    if (possibleRects.length === 0) {
-      attempts++;
-      continue;
-    }
+    // Store the current game state
+    currentGame = {
+        rows,
+        cols,
+        rectangles,
+        grid
+    };
 
-    const { w, h } = possibleRects[Math.floor(Math.random() * possibleRects.length)];
-
-    for (let dy = 0; dy < h; dy++) {
-      for (let dx = 0; dx < w; dx++) {
-        grid[y + dy][x + dx] = true;
-      }
-    }
-
-    const numberX = x + getRandomInt(0, w - 1);
-    const numberY = y + getRandomInt(0, h - 1);
-
-    rectangles.push({
-      x,
-      y,
-      width: w,
-      height: h,
-      area: w * h,
-      numberCell: {
-        x: numberX,
-        y: numberY
-      }
+    res.json({
+        rows,
+        cols,
+        rectangles
     });
+});
 
-    attempts = 0;
-  }
+app.post('/api/lock-rectangle', (req, res) => {
+    if (!currentGame) {
+        return res.status(400).json({ error: 'No active game' });
+    }
 
-  res.json({
-    rows,
-    cols,
-    rectangles
-  });
+    const { start, end } = req.body;
+    
+    if (!start || !end || 
+        typeof start.x !== 'number' || typeof start.y !== 'number' ||
+        typeof end.x !== 'number' || typeof end.y !== 'number') {
+        return res.status(400).json({ error: 'Invalid rectangle coordinates' });
+    }
 
-//     const rows = parseInt(req.query.rows) || 5;
-//   const cols = parseInt(req.query.cols) || 5;
+    // Calculate rectangle dimensions
+    const minX = Math.min(start.x, end.x);
+    const maxX = Math.max(start.x, end.x);
+    const minY = Math.min(start.y, end.y);
+    const maxY = Math.max(start.y, end.y);
+    
+    const width = maxX - minX + 1;
+    const height = maxY - minY + 1;
+    const area = width * height;
 
-//   const grid = Array.from({ length: rows }, () => Array(cols).fill(false));
-//   const rectangles = [];
+    // Check if the selected area contains exactly one number cell
+    let numberCell = null;
+    let numberCellArea = null;
 
-//   const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+    // Find the number cell in the selected area
+    for (const rect of currentGame.rectangles) {
+        if (rect.numberCell.x >= minX && rect.numberCell.x <= maxX &&
+            rect.numberCell.y >= minY && rect.numberCell.y <= maxY) {
+            if (numberCell) {
+                // More than one number cell in the area
+                return res.status(400).json({ error: 'Area contains multiple number cells' });
+            }
+            numberCell = rect.numberCell;
+            numberCellArea = rect.area;
+        }
+    }
 
-//   let attempts = 0;
+    if (!numberCell) {
+        return res.status(400).json({ error: 'Area must contain exactly one number cell' });
+    }
 
-//   while (attempts < 1000) {
-//     const x = getRandomInt(0, cols - 1);
-//     const y = getRandomInt(0, rows - 1);
+    // Check if the area matches the number cell's area
+    if (area !== numberCellArea) {
+        return res.status(400).json({ error: 'Selected area size does not match the number' });
+    }
 
-//     if (grid[y][x]) {
-//       attempts++;
-//       continue;
-//     }
+    // Check if the area overlaps with any locked rectangles
+    for (const rect of currentGame.rectangles) {
+        if (rect.locked) {
+            const rectMinX = rect.x;
+            const rectMaxX = rect.x + rect.width - 1;
+            const rectMinY = rect.y;
+            const rectMaxY = rect.y + rect.height - 1;
 
-//     const maxWidth = cols - x;
-//     const maxHeight = rows - y;
+            if (!(maxX < rectMinX || minX > rectMaxX || maxY < rectMinY || minY > rectMaxY)) {
+                return res.status(400).json({ error: 'Area overlaps with locked rectangle' });
+            }
+        }
+    }
 
-//     const possibleRects = [];
+    // Lock the rectangle
+    for (const rect of currentGame.rectangles) {
+        if (rect.numberCell.x === numberCell.x && rect.numberCell.y === numberCell.y) {
+            rect.locked = true;
+            rect.x = minX;
+            rect.y = minY;
+            rect.width = width;
+            rect.height = height;
+            break;
+        }
+    }
 
-//     for (let w = 1; w <= maxWidth; w++) {
-//       for (let h = 1; h <= maxHeight; h++) {
-//         let valid = true;
-//         for (let dy = 0; dy < h; dy++) {
-//           for (let dx = 0; dx < w; dx++) {
-//             if (grid[y + dy][x + dx]) {
-//               valid = false;
-//               break;
-//             }
-//           }
-//           if (!valid) break;
-//         }
+    // Check if the game is complete
+    const isComplete = currentGame.rectangles.every(rect => rect.locked);
 
-//         if (valid) {
-//           possibleRects.push({ w, h });
-//         }
-//       }
-//     }
-
-//     if (possibleRects.length === 0) {
-//       attempts++;
-//       continue;
-//     }
-
-//     const { w, h } = possibleRects[Math.floor(Math.random() * possibleRects.length)];
-
-//     // Mark used cells
-//     for (let dy = 0; dy < h; dy++) {
-//       for (let dx = 0; dx < w; dx++) {
-//         grid[y + dy][x + dx] = true;
-//       }
-//     }
-
-//     const numberX = x + getRandomInt(0, w - 1);
-//     const numberY = y + getRandomInt(0, h - 1);
-
-//     const locked = [];
-
-//     for (let dy = 0; dy < h; dy++) {
-//       for (let dx = 0; dx < w; dx++) {
-//         locked.push({
-//           x: x + dx,
-//           y: y + dy,
-//           locked: (x + dx === numberX && y + dy === numberY)
-//         });
-//       }
-//     }
-
-//     rectangles.push({
-//       x,
-//       y,
-//       width: w,
-//       height: h,
-//       area: w * h,
-//       locked
-//     });
-
-//     attempts = 0;
-//   }
-
-//   res.json({
-//     rows,
-//     cols,
-//     rectangles
-//   });
-
-//     const rows = parseInt(req.query.rows) || 5;
-//   const cols = parseInt(req.query.cols) || 5;
-
-//   const grid = Array.from({ length: rows }, () => Array(cols).fill(false));
-//   const rectangles = [];
-
-//   const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-
-//   let attempts = 0;
-
-//   while (attempts < 1000) {
-//     const x = getRandomInt(0, cols - 1);
-//     const y = getRandomInt(0, rows - 1);
-
-//     if (grid[y][x]) {
-//       attempts++;
-//       continue;
-//     }
-
-//     const maxWidth = cols - x;
-//     const maxHeight = rows - y;
-
-//     const possibleRects = [];
-
-//     for (let w = 1; w <= maxWidth; w++) {
-//       for (let h = 1; h <= maxHeight; h++) {
-//         let valid = true;
-//         for (let dy = 0; dy < h; dy++) {
-//           for (let dx = 0; dx < w; dx++) {
-//             if (grid[y + dy][x + dx]) {
-//               valid = false;
-//               break;
-//             }
-//           }
-//           if (!valid) break;
-//         }
-
-//         if (valid) {
-//           possibleRects.push({ w, h });
-//         }
-//       }
-//     }
-
-//     if (possibleRects.length === 0) {
-//       attempts++;
-//       continue;
-//     }
-
-//     const { w, h } = possibleRects[Math.floor(Math.random() * possibleRects.length)];
-
-//     // Mark cells as used
-//     for (let dy = 0; dy < h; dy++) {
-//       for (let dx = 0; dx < w; dx++) {
-//         grid[y + dy][x + dx] = true;
-//       }
-//     }
-
-//     const numberX = x + getRandomInt(0, w - 1);
-//     const numberY = y + getRandomInt(0, h - 1);
-
-//     rectangles.push({ x, y, width: w, height: h, numberX, numberY });
-
-//     attempts = 0; // reset attempts
-//   }
-
-//   res.json({
-//     rows,
-//     cols,
-//     rectangles
-//   });
-
-//   {
-//     "id": "rect-1",
-//     "x": 4,
-//     "y": 0,
-//     "width": 1,
-//     "height": 3,
-//     "area": 3,
-//     "locked": false
-// },
-
-    // if (!boardId) {
-    //     return res.status(400).json({ error: 'Board ID is required' });
-    // }
-
-    // const game = gameStates.get(boardId);
-    // if (!game) {
-    //     return res.status(404).json({ error: 'Board not found' });
-    // }
-
-    // const rectangles = game.generateRectangles();
-    // logger.info(`Generated rectangles for board: ${boardId}`);
-    // res.json({ rectangles });
+    res.json({
+        success: true,
+        isComplete,
+        rectangle: {
+            x: minX,
+            y: minY,
+            width,
+            height,
+            area
+        }
+    });
 });
 
 // Socket.IO connection handling

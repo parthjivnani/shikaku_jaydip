@@ -208,6 +208,7 @@
 
                 grid.addEventListener('mouseup', async (e) => {
                     if (!isDragging) return;
+                    isDragging = false; // Set this first to prevent multiple calls
                     
                     const endX = parseInt(e.target.dataset.x);
                     const endY = parseInt(e.target.dataset.y);
@@ -218,6 +219,9 @@
                     const maxY = Math.max(startY, endY);
 
                     try {
+                        // Remove any existing selection before making the API call
+                        clearSelection();
+
                         const response = await fetch('/api/lock-rectangle', {
                             method: 'POST',
                             headers: {
@@ -266,13 +270,18 @@
                         alert('Failed to lock rectangle');
                     }
 
+                    clearSelection();
+                });
+
+                // Remove the document-level mouseup handler and merge it with the grid mouseup
+                document.removeEventListener('mouseup', () => {
                     isDragging = false;
                     clearSelection();
                 });
 
-                // Add right-click event handler for unlocking rectangles
+                // Add right-click handler for unlocking rectangles
                 grid.addEventListener('contextmenu', async (e) => {
-                    e.preventDefault(); // Prevent the default context menu
+                    e.preventDefault(); // Prevent default right-click menu
                     
                     if (!e.target.classList.contains('cell') || !e.target.classList.contains('locked')) return;
 
@@ -318,11 +327,6 @@
                         console.error('Error unlocking rectangle:', error);
                         alert('Failed to unlock rectangle');
                     }
-                });
-
-                document.addEventListener('mouseup', () => {
-                    isDragging = false;
-                    clearSelection();
                 });
             }
 

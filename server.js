@@ -194,8 +194,8 @@ app.get('/api/rectangles', async (req, res) => {
     const gameId = Math.random().toString(36).substr(2, 9);
 
     try {
-        // Delete any existing game with this ID (just in case)
-        await Game.deleteOne({ gameId });
+        // Delete ALL existing games to ensure clean state
+        await Game.deleteMany({});
 
         // Create new game in MongoDB with empty locked rectangles array
         const newGame = new Game({
@@ -237,6 +237,10 @@ app.post('/api/lock-rectangle', async (req, res) => {
         if (!game) {
             return res.status(400).json({ error: 'Invalid game ID or no active game' });
         }
+
+        // Update the game's updatedAt timestamp
+        game.updatedAt = new Date();
+        await game.save();
 
         if (!start || !end || 
             typeof start.x !== 'number' || typeof start.y !== 'number' ||

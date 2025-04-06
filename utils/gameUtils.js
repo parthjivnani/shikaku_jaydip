@@ -1,7 +1,18 @@
+/**
+ * Generates a random integer between min and max (inclusive)
+ */
 const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
+/**
+ * Generates a unique game ID using random alphanumeric characters
+ */
 const generateGameId = () => Math.random().toString(36).substr(2, 9);
 
+/**
+ * Generates a valid Shikaku puzzle board with rectangles
+ * Each rectangle contains exactly one number cell with its area
+ * Ensures no overlapping rectangles in the initial board state
+ */
 const generateRectangles = (rows, cols) => {
     const grid = Array.from({ length: rows }, () => Array(cols).fill(false));
     const rectangles = [];
@@ -74,6 +85,9 @@ const generateRectangles = (rows, cols) => {
     return rectangles;
 };
 
+/**
+ * Checks if two rectangles overlap on the game board
+ */
 const checkRectangleOverlap = (rect1, rect2) => {
     const rect1MaxX = rect1.x + rect1.width - 1;
     const rect1MaxY = rect1.y + rect1.height - 1;
@@ -83,16 +97,17 @@ const checkRectangleOverlap = (rect1, rect2) => {
     return !(rect1MaxX < rect2.x || rect1.x > rect2MaxX || rect1MaxY < rect2.y || rect1.y > rect2MaxY);
 };
 
+/**
+ * Checks if the game is complete and won
+ * A game is won when all cells are covered exactly once by locked rectangles
+ */
 const checkGameCompletion = (game) => {
-    // Create a grid to check coverage
     const grid = Array(game.rows).fill().map(() => Array(game.cols).fill(false));
     
-    // Mark all cells covered by rectangles
     for (const rect of game.lockedRectangles) {
         for (let y = rect.y; y < rect.y + rect.height; y++) {
             for (let x = rect.x; x < rect.x + rect.width; x++) {
                 if (grid[y][x]) {
-                    // Overlapping rectangles
                     return { isComplete: true, isWon: false };
                 }
                 grid[y][x] = true;
@@ -100,7 +115,6 @@ const checkGameCompletion = (game) => {
         }
     }
 
-    // Check if all cells are covered
     const isWon = grid.every(row => row.every(cell => cell));
     return { isComplete: true, isWon };
 };

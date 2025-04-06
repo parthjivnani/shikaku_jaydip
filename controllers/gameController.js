@@ -1,6 +1,10 @@
 const Game = require('../models/Game');
 const { generateGameId, generateRectangles, checkRectangleOverlap, checkGameCompletion } = require('../utils/gameUtils');
 
+/**
+ * Creates a new game board with specified dimensions
+ * Returns a new game ID and board dimensions
+ */
 const createBoard = async (req, res) => {
     const { width, height } = req.body;
     if (!width || !height || width < 1 || height < 1) {
@@ -11,6 +15,10 @@ const createBoard = async (req, res) => {
     res.json({ gameId, dimensions: { width, height } });
 };
 
+/**
+ * Generates a new Shikaku puzzle
+ * Creates rectangles, stores game state in DB, and returns initial board state
+ */
 const generateGame = async (req, res) => {
     const rows = parseInt(req.query.rows) || 5;
     const cols = parseInt(req.query.cols) || 5;
@@ -47,6 +55,11 @@ const generateGame = async (req, res) => {
     }
 };
 
+/**
+ * Locks a rectangle on the game board
+ * Validates rectangle position, size, and checks for overlaps
+ * Updates game state and checks for win condition
+ */
 const lockRectangle = async (req, res) => {
     const { gameId, start, end } = req.body;
     
@@ -156,6 +169,10 @@ const lockRectangle = async (req, res) => {
     }
 };
 
+/**
+ * Unlocks a previously locked rectangle at given coordinates
+ * Updates game state to reflect the removed rectangle
+ */
 const unlockRectangle = async (req, res) => {
     const { gameId, x, y } = req.body;
     

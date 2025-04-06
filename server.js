@@ -351,14 +351,53 @@ app.post('/api/lock-rectangle', async (req, res) => {
     }
 });
 
-app.post('/api/unlock-rectangle', (req, res) => {
+app.post('/api/unlock-rectangle', async (req, res) => {
     const { gameId, x, y } = req.body;
     
     if (!gameId) {
         return res.status(400).json({ error: 'Game ID is required' });
     }
 
-    // ... rest of the unlock-rectangle endpoint logic ...
+    if (typeof x !== 'number' || typeof y !== 'number') {
+        return res.status(400).json({ error: 'Invalid coordinates' });
+    }
+
+    try {
+        // Find the game in MongoDB
+        const game = await Game.findOne({ gameId });
+        if (!game) {
+            return res.status(400).json({ error: 'Invalid game ID or no active game' });
+        }
+
+        // Find the locked rectangle at the given coordinates
+        const rectIndex = game.lockedRectangles.findIndex(rect => 
+            x >= rect.x && x < rect.x + rect.width &&
+            y >= rect.y && y < rect.y + rect.height
+        );
+
+        if (rectIndex === -1) {
+            return res.status(400).json({ error: 'No locked rectangle found at the specified coordinates' });
+        }
+
+        // Remove the rectangle from locked rectangles
+        const removedRect = game.lockedRectangles.splice(rectIndex, 1)[0];
+
+        // Update game state
+        game.isComplete = false;
+        game.isWon = false;
+        game.updatedAt = new Date();
+
+        // Save the updated game state
+        await game.save();
+
+        res.json({
+            success: true,
+            rectangle: removedRect
+        });
+    } catch (error) {
+        console.error('Error unlocking rectangle:', error);
+        res.status(500).json({ error: 'Failed to unlock rectangle' });
+    }
 });
 
 // Socket.IO connection handling

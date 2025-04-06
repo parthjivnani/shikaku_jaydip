@@ -86,7 +86,6 @@
     .locked {
       background-color: #90EE90 !important;
       border: 2px solid #4CAF50 !important;
-      pointer-events: none;
     }
 
     /* Add border styles for rectangle edges */
@@ -187,6 +186,8 @@
                 const grid = document.getElementById('grid');
 
                 grid.addEventListener('mousedown', (e) => {
+                    if (e.button !== 0) return;
+                    
                     if (!e.target.classList.contains('cell') || e.target.classList.contains('locked')) return;
 
                     isDragging = true;
@@ -267,6 +268,56 @@
 
                     isDragging = false;
                     clearSelection();
+                });
+
+                // Add right-click event handler for unlocking rectangles
+                grid.addEventListener('contextmenu', async (e) => {
+                    e.preventDefault(); // Prevent the default context menu
+                    
+                    if (!e.target.classList.contains('cell') || !e.target.classList.contains('locked')) return;
+
+                    const x = parseInt(e.target.dataset.x);
+                    const y = parseInt(e.target.dataset.y);
+
+                    try {
+                        const response = await fetch('/api/unlock-rectangle', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                gameId: currentGameId,
+                                x,
+                                y
+                            })
+                        });
+
+                        const data = await response.json();
+
+                        if (response.ok) {
+                            // Find all cells in the unlocked rectangle
+                            const rect = data.rectangle;
+                            for (let y = rect.y; y < rect.y + rect.height; y++) {
+                                for (let x = rect.x; x < rect.x + rect.width; x++) {
+                                    const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                                    if (cell) {
+                                        cell.classList.remove('locked');
+                                        // Restore number display if it's a number cell
+                                        const isNumberCell = rect.numberCell.x === x && rect.numberCell.y === y;
+                                        if (isNumberCell) {
+                                            cell.textContent = rect.area;
+                                            cell.classList.add('number');
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            alert(data.error || 'Failed to unlock rectangle');
+                        }
+                    } catch (error) {
+                        console.error('Error unlocking rectangle:', error);
+                        alert('Failed to unlock rectangle');
+                    }
                 });
 
                 document.addEventListener('mouseup', () => {
